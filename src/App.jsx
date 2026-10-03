@@ -28,18 +28,9 @@ import {
   Clock,
 } from "lucide-react";
 
-// only a slow PBKDF2 hash of the admin password ships with the site
-const ADMIN_PASSWORD_HASH = "3edf6a4688a8a1cf4b868d5badec1b4b8908d0dd159d30de8eafbab28f298a26";
-async function hashPassword(text) {
-  const enc = new TextEncoder();
-  const key = await crypto.subtle.importKey("raw", enc.encode(text), "PBKDF2", false, ["deriveBits"]);
-  const bits = await crypto.subtle.deriveBits(
-    { name: "PBKDF2", hash: "SHA-256", salt: enc.encode("nabd-admin"), iterations: 200000 },
-    key,
-    256
-  );
-  return [...new Uint8Array(bits)].map((x) => x.toString(16).padStart(2, "0")).join("");
-}
+// the admin signs in with Firebase Auth; the password never ships with the site.
+// Firestore rules (firestore.rules) only accept writes from this account.
+const ADMIN_EMAIL = "admin@haedore.app";
 const LOGO_SRC = "/images/logo.jpg";
 
 const PLATFORM_META = {
@@ -463,6 +454,7 @@ function getFirestore() {
     firebaseReadyPromise = (async () => {
       await loadScript("https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js");
       await loadScript("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js");
+      await loadScript("https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js");
       if (!window.firebase.apps || !window.firebase.apps.length) {
         window.firebase.initializeApp(FIREBASE_CONFIG);
       }
@@ -470,6 +462,11 @@ function getFirestore() {
     })();
   }
   return firebaseReadyPromise;
+}
+
+async function getAuth() {
+  await getFirestore();
+  return window.firebase.auth();
 }
 
 const SEED_CERTIFICATES = [];
@@ -651,7 +648,7 @@ async function fbGetItems(type) {
   if (snap.exists && Array.isArray(snap.data().items)) {
     return snap.data().items;
   }
-  await ref.set({ items: DOC_MAP[type].seed });
+  await ref.set({ items: DOC_MAP[type].seed }).catch(() => {});
   return DOC_MAP[type].seed;
 }
 
@@ -668,7 +665,7 @@ async function fbGetObject(collection, doc, seed) {
   if (snap.exists && snap.data()) {
     return { ...seed, ...snap.data() };
   }
-  await ref.set(seed);
+  await ref.set(seed).catch(() => {});
   return seed;
 }
 
@@ -841,6 +838,16 @@ export default function WorkshopSite() {
   }, [loadAll]);
 
   useEffect(() => {
+    let unsub = () => {};
+    getAuth()
+      .then((auth) => {
+        unsub = auth.onAuthStateChanged((user) => setIsAdmin(!!user && user.email === ADMIN_EMAIL));
+      })
+      .catch(() => {});
+    return () => unsub();
+  }, []);
+
+  useEffect(() => {
     if (view === "certificates" && isAdmin && !certTemplateLoaded) {
       fbGetObject("nabd", "certTemplate", SEED_CERT_TEMPLATE)
         .then((tmpl) => {
@@ -970,14 +977,28 @@ export default function WorkshopSite() {
 
   const handleLogin = async (e) => {
     e.preventDefault();
-    if ((await hashPassword(passwordInput)) === ADMIN_PASSWORD_HASH) {
+    setLoginError("");
+    try {
+      const auth = await getAuth();
+      await auth.signInWithEmailAndPassword(ADMIN_EMAIL, passwordInput);
       setIsAdmin(true);
       setShowLogin(false);
       setPasswordInput("");
-      setLoginError("");
-    } else {
-      setLoginError("كلمة السر غير صحيحة");
+    } catch (err) {
+      const code = (err && err.code) || "";
+      if (code === "auth/too-many-requests") setLoginError("محاولات كثيرة، انتظر شوية وحاول مرة ثانية");
+      else if (code === "auth/network-request-failed") setLoginError("تعذر الاتصال، تأكد من الإنترنت");
+      else if (/configuration-not-found|operation-not-allowed|internal-error/.test(code) || /CONFIGURATION_NOT_FOUND/.test(String(err && err.message)))
+        setLoginError("دخول المشرف غير مفعّل بعد بـ Firebase");
+      else setLoginError("كلمة السر غير صحيحة");
     }
+  };
+
+  const handleLogout = async () => {
+    setIsAdmin(false);
+    try {
+      (await getAuth()).signOut();
+    } catch (e) {}
   };
 
   // Workshop form handlers
@@ -1576,7 +1597,7 @@ export default function WorkshopSite() {
               </button>
             )}
             <button
-              onClick={() => (isAdmin ? setIsAdmin(false) : setShowLogin(true))}
+              onClick={() => (isAdmin ? handleLogout() : setShowLogin(true))}
               className="flex items-center gap-1.5 text-xs px-3 py-2 rounded-full border border-[#28324D] text-[#8B93A7] hover:text-[#EAF0FF] hover:border-[#E8A33D] transition-colors"
             >
               <Lock size={13} />

@@ -1,0 +1,15 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // الموقع يقرا بيانات نبض للكل، والتعديل بس لحساب المشرف
+    match /nabd/{docId} {
+      allow read: if true;
+      allow write: if request.auth != null
+                   && request.auth.token.email == "admin@haedore.app";
+    }
+    // أي شي ثاني مقفول
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
