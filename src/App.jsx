@@ -28,7 +28,18 @@ import {
   Clock,
 } from "lucide-react";
 
-const ADMIN_PASSWORD = "haedar077151haedar123";
+// only a slow PBKDF2 hash of the admin password ships with the site
+const ADMIN_PASSWORD_HASH = "3edf6a4688a8a1cf4b868d5badec1b4b8908d0dd159d30de8eafbab28f298a26";
+async function hashPassword(text) {
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey("raw", enc.encode(text), "PBKDF2", false, ["deriveBits"]);
+  const bits = await crypto.subtle.deriveBits(
+    { name: "PBKDF2", hash: "SHA-256", salt: enc.encode("nabd-admin"), iterations: 200000 },
+    key,
+    256
+  );
+  return [...new Uint8Array(bits)].map((x) => x.toString(16).padStart(2, "0")).join("");
+}
 const LOGO_SRC = "/images/logo.jpg";
 
 const PLATFORM_META = {
@@ -957,9 +968,9 @@ export default function WorkshopSite() {
     setHeroTextFormOpen(false);
   };
 
-  const handleLogin = (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault();
-    if (passwordInput === ADMIN_PASSWORD) {
+    if ((await hashPassword(passwordInput)) === ADMIN_PASSWORD_HASH) {
       setIsAdmin(true);
       setShowLogin(false);
       setPasswordInput("");
