@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import QRCode from "qrcode";
 import {
   Send,
@@ -1891,8 +1891,8 @@ export default function WorkshopSite() {
               const meta = PLATFORM_META[w.platform] || PLATFORM_META.other;
               const Icon = meta.icon;
               return (
+                <BlurFade key={w.id} delay={(idx % 3) * 70}>
                 <div
-                  key={w.id}
                   style={{ animation: `navFloat ${3.8 + (idx % 4) * 0.4}s ease-in-out infinite ${(idx % 4) * 0.25}s` }}
                 >
                 <div
@@ -2064,6 +2064,7 @@ export default function WorkshopSite() {
                   </div>
                 </div>
                 </div>
+                </BlurFade>
               );
             })}
           </div>
@@ -2134,8 +2135,9 @@ export default function WorkshopSite() {
             </div>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-              {heroes.map((hero) => (
-                <div key={hero.id} className="flex flex-col items-center gap-2 relative">
+              {heroes.map((hero, idx) => (
+                <BlurFade key={hero.id} delay={(idx % 3) * 70}>
+                <div className="flex flex-col items-center gap-2 relative">
                   <button
                     onClick={() => {
                       setSelectedHeroId(hero.id);
@@ -2198,6 +2200,7 @@ export default function WorkshopSite() {
                     </div>
                   )}
                 </div>
+                </BlurFade>
               ))}
             </div>
           )}
@@ -4090,6 +4093,47 @@ function InteractiveHeroBackground() {
           opacity={0.13}
         />
       </div>
+    </div>
+  );
+}
+
+// Scroll-reveal fade adapted from Magic UI's BlurFade (MIT, (c) Magic UI — https://magicui.design).
+// Dependency-free: IntersectionObserver + the .blur-fade CSS in index.css instead of `motion`.
+// Shows content immediately when reduced motion is requested, when IntersectionObserver is
+// unavailable, or when keyboard focus lands inside before it has scrolled into view.
+function BlurFade({ children, delay = 0, className = "" }) {
+  const ref = useRef(null);
+  const [visible, setVisible] = useState(
+    () =>
+      typeof window === "undefined" ||
+      !("IntersectionObserver" in window) ||
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  );
+
+  useEffect(() => {
+    if (visible || !ref.current) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          setVisible(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: "0px 0px -40px 0px" }
+    );
+    observer.observe(ref.current);
+    return () => observer.disconnect();
+  }, [visible]);
+
+  return (
+    <div
+      ref={ref}
+      className={`blur-fade ${className}`}
+      data-visible={visible ? "true" : "false"}
+      style={{ transitionDelay: visible ? `${delay}ms` : "0ms" }}
+      onFocusCapture={() => setVisible(true)}
+    >
+      {children}
     </div>
   );
 }

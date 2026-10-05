@@ -6,3 +6,25 @@ html, body {
   margin: 0;
   padding: 0;
 }
+
+/* Scroll reveal for <BlurFade> (adapted from Magic UI's BlurFade, MIT). */
+.blur-fade {
+  opacity: 0;
+  transform: translateY(8px);
+  filter: blur(4px);
+  transition: opacity 450ms ease-out, transform 450ms ease-out, filter 450ms ease-out;
+}
+.blur-fade[data-visible="true"] {
+  opacity: 1;
+  transform: none;
+  filter: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .blur-fade,
+  .blur-fade[data-visible="true"] {
+    opacity: 1;
+    transform: none;
+    filter: none;
+    transition: none;
+  }
+}
